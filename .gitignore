@@ -1,0 +1,6 @@
+node_modules/
+.env
+.env.*
+*.pem
+exports-raw/
+.DS_Store

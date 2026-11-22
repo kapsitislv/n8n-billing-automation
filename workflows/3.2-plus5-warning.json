@@ -1,0 +1,93 @@
+{
+  "name": "3.2 AKF — Rēķini: +5 brīdinājums pirms apturēšanas",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "20 9 * * *" }] }
+      },
+      "id": "1b400ea1-a20d-4892-b315-f70155f685a6",
+      "name": "Katru dienu 09:20",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-656, 128]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "YOUR_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Klienti", "mode": "name" },
+        "filtersUI": {
+          "values": [
+            { "lookupColumn": "Rēķins nosūtīts", "lookupValue": "Jā" },
+            { "lookupColumn": "Apmaksa saņemta", "lookupValue": "Nē" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ca078c41-d51c-4286-99b0-c449f5362609",
+      "name": "Iegūt neapmaksātos klientus",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-448, 128]
+    },
+    {
+      "parameters": {
+        "jsCode": "const f=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Riga',year:'numeric',month:'2-digit',day:'2-digit'});\nconst [ty,tm,td]=f.format(new Date()).split('-').map(Number);\nconst today=new Date(Date.UTC(ty,tm-1,td));\nconst lv=d=>String(d.getUTCDate()).padStart(2,'0')+'.'+String(d.getUTCMonth()+1).padStart(2,'0')+'.'+d.getUTCFullYear()+'.';\nconst todayStr=lv(today);\nconst parseLV=s=>{const p=String(s==null?'':s).trim().split('.');return (p.length>=3&&p[0]&&p[1]&&p[2])?new Date(Date.UTC(+p[2],+p[1]-1,+p[0])):null;};\nconst out=[];\nfor(const it of $input.all()){\n  const r=it.json;\n  const due=parseLV(r['Apmaksas termiņš']);\n  if(!due)continue;\n  const dp=Math.round((today-due)/864e5);\n  if(dp<5||dp>=7)continue;\n  if(String(r['Brīdināts pirms apturēšanas']||'').trim()!=='')continue;\n  const fullName=String(r['Klienta vārds']||'').trim();\n  out.push({json:{name:fullName,fname:fullName.split(' ')[0]||fullName,email:String(r['E-pasts']||'').trim(),invoice_no:String(r['Rēķina Nr.']||'').trim(),amount:Number(r['Likme (EUR/mēn)']||0).toFixed(2).replace('.',','),due_date:lv(due),suspend_date:lv(new Date(due.getTime()+7*864e5)),days_past:dp,todayStr}});\n}\nreturn out;"
+      },
+      "id": "5390ed7a-2d72-4990-ba44-6b9c680d6247",
+      "name": "Atlasa +5 nesamaksātos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-224, 128]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Rēķins Nr. {{ $json.invoice_no }} — atgādinājums pirms apturēšanas",
+        "message": "=<p>Labdien, {{ $json.fname }}!</p><p>Atgādinām, ka rēķins Nr. {{ $json.invoice_no }} par summu {{ $json.amount }} EUR ar apmaksas termiņu {{ $json.due_date }} joprojām nav apmaksāts.</p><p>Informējam laikus: ja maksājums netiks saņemts līdz {{ $json.suspend_date }}, pakalpojums tiks uz laiku apturēts saskaņā ar pakalpojuma noteikumu 5. punktu, un programma CoachRx tiks pauzēta līdz maksājuma saņemšanai.</p><p>Ja maksājums jau ir veikts pēdējās dienās, lūdzu ignorējiet šo ziņojumu.</p><p>Ja ir kādas grūtības ar apmaksu, lūdzu sazinieties ar mums — noteikti atrisināsim.</p><p>Paldies!</p><p>YOUR_EMAIL_SIGNATURE</p>",
+        "options": { "senderName": "YOUR_SENDER_NAME", "replyTo": "you@example.com" },
+        "resource": "message",
+        "operation": "send"
+      },
+      "id": "ae7e3f35-4219-459b-bb96-9baa69b456b5",
+      "name": "E4b brīdinājums klientam",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "YOUR_SPREADSHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Klienti", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": ["Klienta vārds"],
+          "value": {
+            "Brīdināts pirms apturēšanas": "={{ $('Atlasa +5 nesamaksātos').item.json.todayStr }}",
+            "Klienta vārds": "={{ $('Atlasa +5 nesamaksātos').item.json.name }}"
+          },
+          "schema": [
+            { "id": "Klienta vārds", "displayName": "Klienta vārds", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Brīdināts pirms apturēšanas", "displayName": "Brīdināts pirms apturēšanas", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "7ddf3d48-85b6-493b-bdd5-0999dac3c373",
+      "name": "Atzīmē brīdinājumu",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [224, 128]
+    }
+  ],
+  "connections": {
+    "Katru dienu 09:20": { "main": [[{ "node": "Iegūt neapmaksātos klientus", "type": "main", "index": 0 }]] },
+    "Iegūt neapmaksātos klientus": { "main": [[{ "node": "Atlasa +5 nesamaksātos", "type": "main", "index": 0 }]] },
+    "Atlasa +5 nesamaksātos": { "main": [[{ "node": "E4b brīdinājums klientam", "type": "main", "index": 0 }]] },
+    "E4b brīdinājums klientam": { "main": [[{ "node": "Atzīmē brīdinājumu", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "timezone": "Europe/Riga" },
+  "active": false
+}
